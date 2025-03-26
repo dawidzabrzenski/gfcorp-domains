@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -6,78 +6,65 @@ import {
   getFilteredRowModel,
   flexRender
 } from '@tanstack/react-table'
-import {
-  DeleteRounded as TrashBin,
-  CreateRounded as Edit
-} from '@mui/icons-material'
-import domains from '../assets/domains.json'
 import { differenceInCalendarDays } from 'date-fns'
+import EditUserTrigger from 'ui/EditUserTrigger'
 
 export default function Table() {
-  const memoizedData = useMemo(() => {
-    return domains.map((item) => ({
-      ...item,
-      renew: new Date(item.renew)
-    }))
-  }, [])
-
-  const [data] = useState(memoizedData)
-
-  const handleEdit = (user) => {
-    console.log('Edytowanie użytkownika:', user)
-    console.log(
-      differenceInCalendarDays(
-        new Date(2012, 6, 2, 0, 0),
-        new Date(2011, 6, 2, 23, 0)
-      )
-    )
-  }
-
-  const columns = [
-    { accessorKey: 'domain', header: 'Domena' },
-    {
-      accessorKey: 'renew',
-      header: 'Data odnowienia',
-      sortingFn: (rowA, rowB) => {
-        const dateA = rowA.original.renew.getTime()
-        const dateB = rowB.original.renew.getTime()
-        return dateA - dateB
-      },
-      cell: (info) =>
-        info.getValue().toLocaleDateString('pl-PL', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          timeZone: 'Europe/Warsaw'
-        })
-    },
-    { accessorKey: 'company', header: 'Spółka' },
-    { accessorKey: 'registrar', header: 'Rejestrator' },
-    {
-      header: '',
-      id: 'actions',
-      enableSorting: false,
-      cell: ({ row }) => (
-        <div className="flex justify-center gap-2">
-          <button
-            onClick={() => handleEdit(row.original)}
-            className="bg-dark-lighterbg rounded px-2 py-1 text-white transition-all"
-          >
-            <TrashBin fontSize="very-small" />
-          </button>
-          <button
-            onClick={() => handleEdit(row.original)}
-            className="bg-dark-lighterbg rounded px-2 py-1 text-white transition-all"
-          >
-            <Edit fontSize="very-small" />
-          </button>
-        </div>
-      )
-    }
-  ]
-
+  const [data, setData] = useState([])
   const [filter, setFilter] = useState('')
   const [sorting, setSorting] = useState([{ id: 'renew', desc: false }])
+  const today = new Date()
+
+  // Pobieranie danych z API
+  useEffect(() => {
+    fetch('http://localhost:5000/api/domains')
+      .then((res) => res.json())
+      .then((domains) => {
+        const formattedData = domains.map((item) => ({
+          ...item,
+          renew: new Date(item.renew)
+        }))
+        setData(formattedData)
+      })
+      .catch((error) => console.error('Error fetching data:', error))
+  }, [])
+
+  const columns = useMemo(
+    () => [
+      { accessorKey: 'domain', header: 'Domena' },
+      {
+        accessorKey: 'renew',
+        header: 'Data odnowienia',
+        sortingFn: (rowA, rowB) => rowA.original.renew - rowB.original.renew,
+        cell: (info) => {
+          const renewDate = info.getValue()
+          return (
+            <span className="p-2 rounded">
+              {renewDate.toLocaleDateString('pl-PL', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                timeZone: 'Europe/Warsaw'
+              })}
+            </span>
+          )
+        }
+      },
+      { accessorKey: 'company', header: 'Spółka' },
+      { accessorKey: 'registrar', header: 'Rejestrator' },
+      {
+        header: '',
+        id: 'actions',
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex justify-center gap-2">
+            <EditUserTrigger data={row.original} />
+          </div>
+        )
+      }
+    ],
+    []
+  )
 
   const table = useReactTable({
     data,
@@ -85,10 +72,7 @@ export default function Table() {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    state: {
-      globalFilter: filter,
-      sorting
-    },
+    state: { globalFilter: filter, sorting },
     onGlobalFilterChange: setFilter,
     onSortingChange: setSorting
   })
@@ -109,7 +93,7 @@ export default function Table() {
               {headerGroup.headers.map((header) => (
                 <th
                   key={header.id}
-                  className="cursor-pointer border border-dark-mainborder bg-dark-mainbg p-2 font-bold transition-all duration-200 hover:bg-dark-lightbg"
+                  className="cursor-pointer border border-dark-mainborder bg-dark-mairenbg p-2 font-bold transition-all duration-200 hover:bg-dark-lightbg"
                   onClick={header.column.getToggleSortingHandler()}
                 >
                   {flexRender(
@@ -128,21 +112,16 @@ export default function Table() {
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row) => (
-            <tr
-              key={row.id}
-              className={`${
-                differenceInCalendarDays(
-                  new Date(2012, 6, 2, 0, 0),
-                  new Date(2011, 6, 2, 23, 0)
-                ) === 366
-                  ? 'bg-red-500'
-                  : 'bg-blue-600'
-              }`}
-            >
+            <tr key={row.id}>
               {row.getVisibleCells().map((cell) => (
                 <td
                   key={cell.id}
-                  className={`border border-dark-mainborder  p-2 transition-all duration-200 hover:bg-dark-lightbg`}
+                  className={`border border-dark-mainborder p-2 transition-all duration-200 ${
+                    differenceInCalendarDays(cell.row.original.renew, today) <
+                    30
+                      ? 'bg-[#7c1b1b]'
+                      : ''
+                  }`}
                 >
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </td>
